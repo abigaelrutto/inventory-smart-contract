@@ -132,11 +132,167 @@ struct AccessPayload {
     doctor_password: String,
 }
 
+// Update function to add a product
+#[ic_cdk::update]
+fn add_product(payload: ProductPayload) -> Result<Product, Error> {
+    // validate payload
+    let validate_payload = payload.validate();
+    if validate_payload.is_err() {
+        return Err(Error::InvalidPayload {
+            msg: validate_payload.unwrap_err().to_string(),
+        });
+    }
+
+    let id = ID_COUNTER
+        .with(|counter| {
+            let current_id = *counter.borrow().get();
+            counter.borrow_mut().set(current_id + 1)
+        })
+        .expect("Cannot increment Ids");
+
+    // get warehouse
+    let warehouse =
+        WAREHOUSE_STORAGE.with(|warehouses| warehouses.borrow().get(&payload.warehouse_id));
+    match warehouse {
+        Some(warehouse) => {
+            let product = Product {
+                id,
+                name: payload.name.clone(),
+                quantity: payload.quantity,
+                category: payload.category,
+                warehouse: warehouse.clone(),
+                added_at: time(),
+                re_stocked_at: time(),
+            };
+
+            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(id, product.clone())) {
+                None => Ok(product),
+                Some(_) => Err(Error::InvalidPayload {
+                    msg: format!("Could not add product name: {}", payload.name),
+                }),
+            }
+        }
+        None => Err(Error::NotFound {
+            msg: format!("Warehouse of id: {} not found", payload.warehouse_id),
+        }),
+    }
+}
+
+// Define query function to get a product by ID
+#[ic_cdk::query]
+fn get_product_by_id(id: u64) -> Result<Product, Error> {
+    match PRODUCT_STORAGE.with(|products| products.borrow().get(&id)) {
+        Some(product) => Ok(product),
+        None => Err(Error::NotFound {
+            msg: format!("product id:{} does not exist", id),
+        }),
+    }
+}
+
+// get all products
+#[ic_cdk::query]
+fn get_all_products() -> Result<Vec<Product>, Error> {
+    // Retrieve all products from the storage
+    let product_map: Vec<(u64, Product)> = PRODUCT_STORAGE.with(|s| s.borrow().iter().collect());
+    // Extract the products from the tuple and create a vector
+    let products: Vec<Product> = product_map
+        .into_iter()
+        .map(|(_, product)| product)
+        .collect();
+
+    match products.len() {
+        0 => Err(Error::NotFound {
+            msg: format!("no products found"),
+        }),
+        _ => Ok(products),
+    }
+}
+
+// function to remove a given quantity fo product from a warehouse while cheking if product is available and if warehouse has enough quantity
+#[ic_cdk::update]
+fn remove_product_from_warehouse(payload: GetProductPayload) -> Result<Product, Error> {
+    let product = PRODUCT_STORAGE.with(|products| products.borrow().get(&payload.product_id));
+    match product {
+        Some(product) => {
+            if product.quantity < payload.amount {
+                return Err(Error::InvalidPayload {
+                    msg: format!("Not enough quantity of product: {}", product.name),
+                });
+            }
+
+            let new_product = Product {
+                quantity: product.quantity - payload.amount,
+                ..product.clone()
+            };
+
+            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(product.id, new_product.clone())) {
+                Some(_) => Ok(new_product),
+                None => Err(Error::InvalidPayload {
+                    msg: format!("Could not remove product name: {}", product.name),
+                }),
+            }
+        }
+        None => Err(Error::NotFound {
+            msg: format!("product of id: {} not found", payload.product_id),
+        }),
+    }
+}
+
+// function to add a given quantity fo product to a warehouse
+#[ic_cdk::update]
+fn add_product_to_warehouse(payload: GetProductPayload) -> Result<Product, Error> {
+    let product = PRODUCT_STORAGE.with(|products| products.borrow().get(&payload.product_id));
+    match product {
+        Some(product) => {
+            let new_product = Product {
+                quantity: product.quantity + payload.amount,
+                ..product.clone()
+            };
+
+            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(product.id, new_product.clone())) {
+                Some(_) => Ok(new_product),
+                None => Err(Error::InvalidPayload {
+                    msg: format!("Could not add product name: {}", product.name),
+                }),
+            }
+        }
+        None => Err(Error::NotFound {
+            msg: format!("product of id: {} not found", payload.product_id),
+        }),
+    }
+}
+
+// update function to edit a product where authorizations is by password
+#[ic_cdk::update]
+fn edit_product(payload: EditProductPayload) -> Result<Product, Error> {
+    let product = PRODUCT_STORAGE.with(|products| products.borrow().get(&payload.product_id));
+
+    match product {
+        Some(product) => {
+            let new_product = Product {
+                name: payload.name,
+                ..product.clone()
+            };
+
+            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(product.id, new_product.clone())) {
+                Some(_) => Ok(new_product),
+                None => Err(Error::InvalidPayload {
+                    msg: format!("Could not edit product name: {}", product.name),
+                }),
+            }
+        }
+        None => Err(Error::NotFound {
+            msg: format!("product of id: {} not found", payload.product_id),
+        }),
+    }
+}
+
 // Query function to get all warehouses
 #[ic_cdk::query]
 fn get_all_warehouses() -> Result<Vec<Warehouse>, Error> {
     // Retrieve all Warehouses from the storage
-    let warehousemap: Vec<(u64, Warehouse)> = WAREHOUSE_STORAGE.with(|s| s.borrow().iter().collect());
+    let warehousemap: Vec<(u64, Warehouse)> =
+        WAREHOUSE_STORAGE.with(|s| s.borrow().iter().collect());
     // Extract the Warehouses from the tuple and create a vector
     let warehouses: Vec<Warehouse> = warehousemap
         .into_iter()
@@ -156,7 +312,8 @@ fn get_all_warehouses() -> Result<Vec<Warehouse>, Error> {
 fn get_warehouse_by_name(search: String) -> Result<Vec<Warehouse>, Error> {
     let query = search.to_lowercase();
     // Retrieve all Warehouses from the storage
-    let warehouse_map: Vec<(u64, Warehouse)> = WAREHOUSE_STORAGE.with(|s| s.borrow().iter().collect());
+    let warehouse_map: Vec<(u64, Warehouse)> =
+        WAREHOUSE_STORAGE.with(|s| s.borrow().iter().collect());
     let warehouses: Vec<Warehouse> = warehouse_map
         .into_iter()
         .map(|(_, warehouse)| warehouse)
@@ -223,7 +380,8 @@ fn add_warehouse(payload: WarehousePayload) -> Result<Warehouse, Error> {
 // update function to edit a warehouse where only owners of warehouses can edit title, is_community, price and description. Non owners can only edit descriptions of communtiy warehouses. authorizations is by password
 #[ic_cdk::update]
 fn edit_warehouse(payload: EditWarehousePayload) -> Result<Warehouse, Error> {
-    let warehouse = WAREHOUSE_STORAGE.with(|warehouses| warehouses.borrow().get(&payload.warehouse_id));
+    let warehouse =
+        WAREHOUSE_STORAGE.with(|warehouses| warehouses.borrow().get(&payload.warehouse_id));
 
     match warehouse {
         Some(warehouse) => {
@@ -233,129 +391,16 @@ fn edit_warehouse(payload: EditWarehousePayload) -> Result<Warehouse, Error> {
             };
 
             match WAREHOUSE_STORAGE
-                .with(|s| s.borrow_mut().insert(warehouse    .id, new_warehouse    .clone()))
+                .with(|s| s.borrow_mut().insert(warehouse.id, new_warehouse.clone()))
             {
                 Some(_) => Ok(new_warehouse),
                 None => Err(Error::InvalidPayload {
-                    msg: format!("Could not edit warehouse     title: {}", warehouse    .name),
+                    msg: format!("Could not edit warehouse     title: {}", warehouse.name),
                 }),
             }
         }
         None => Err(Error::NotFound {
             msg: format!("warehouse of id: {} not found", payload.warehouse_id),
-        }),
-    }
-}
-
-// Define query function to get a product by ID
-#[ic_cdk::query]
-fn get_product(id: u64) -> Result<Product, Error> {
-    match PRODUCT_STORAGE.with(|products| products.borrow().get(&id)) {
-        Some(product) => Ok(product),
-        None => Err(Error::NotFound {
-            msg: format!("product id:{} does not exist", id),
-        }),
-    }
-}
-
-// Update function to add a product
-#[ic_cdk::update]
-fn add_product(payload: ProductPayload) -> Result<Product, Error> {
-    // validate payload
-    let validate_payload = payload.validate();
-    if validate_payload.is_err() {
-        return Err(Error::InvalidPayload {
-            msg: validate_payload.unwrap_err().to_string(),
-        });
-    }
-
-    let id = ID_COUNTER
-        .with(|counter| {
-            let current_id = *counter.borrow().get();
-            counter.borrow_mut().set(current_id + 1)
-        })
-        .expect("Cannot increment Ids");
-
-    // get warehouse
-    let warehouse = WAREHOUSE_STORAGE.with(|warehouses| warehouses.borrow().get(&payload.warehouse_id));
-    match warehouse {
-        Some(warehouse) => {
-            
-            let product = Product {
-                id,
-                name: payload.name.clone(),
-                quantity: payload.quantity,
-                category: payload.category,
-                warehouse: warehouse.clone(),
-                added_at: time(),
-                re_stocked_at: time(),
-            };
-
-            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(id, product.clone())) {
-                None => Ok(product),
-                Some(_) => Err(Error::InvalidPayload {
-                    msg: format!("Could not add product name: {}", payload.name),
-                }),
-            }
-        }
-        None => Err(Error::NotFound {
-            msg: format!("Warehouse of id: {} not found", payload.warehouse_id),
-        }),
-    }
-}
-
-// function to remove a given quantity fo product from a warehouse while cheking if product is available and if warehouse has enough quantity
-#[ic_cdk::update]
-fn remove_product_from_warehouse(payload: GetProductPayload) -> Result<Product, Error> {
-    let product = PRODUCT_STORAGE.with(|products| products.borrow().get(&payload.product_id));
-    match product {
-        Some(product) => {
-            if product.quantity < payload.amount {
-                return Err(Error::InvalidPayload {
-                    msg: format!("Not enough quantity of product: {}", product.name),
-                });
-            }
-
-            let new_product = Product {
-                quantity: product.quantity - payload.amount,
-                ..product.clone()
-            };
-
-            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(product.id, new_product.clone())) {
-                Some(_) => Ok(new_product),
-                None => Err(Error::InvalidPayload {
-                    msg: format!("Could not remove product name: {}", product.name),
-                }),
-            }
-        }
-        None => Err(Error::NotFound {
-            msg: format!("product of id: {} not found", payload.product_id),
-        }),
-    }
-}
-
-// update function to edit a product where authorizations is by password
-#[ic_cdk::update]
-fn edit_product(payload: EditProductPayload) -> Result<Product, Error> {
-    let product = PRODUCT_STORAGE.with(|products| products.borrow().get(&payload.product_id));
-
-    match product {
-        Some(product) => {
-
-            let new_product = Product {
-                name: payload.name,
-                ..product.clone()
-            };
-
-            match PRODUCT_STORAGE.with(|s| s.borrow_mut().insert(product.id, new_product.clone())) {
-                Some(_) => Ok(new_product),
-                None => Err(Error::InvalidPayload {
-                    msg: format!("Could not edit product name: {}", product.name),
-                }),
-            }
-        }
-        None => Err(Error::NotFound {
-            msg: format!("product of id: {} not found", payload.product_id),
         }),
     }
 }
