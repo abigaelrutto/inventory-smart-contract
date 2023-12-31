@@ -1,88 +1,96 @@
-# Patient Record Access System
+# Inventory System
 
-## Overview
-
-This ICP smart contract allows Patient to manage access to their medical History to doctors and hospitals. It manages doctors and their assignments to hospitals, and patient-doctor interactions. It has functions to update patient history and assign patients to doctors. The error handling is expanded to cover unauthorized access and payload validation issues. The Candid interface is updated to reflect the changes in functionality.
+This code defines a basic system for managing products and warehouses, including CRUD operations and some authorization mechanisms. It utilizes the Candid interface for communication on the Internet Computer.
+Functions include adding/editing products and warehouses, querying products and warehouses by ID or name, and handling product quantities.
 
 ## 1. Struct Definitions
 
-### Doctor
+- **Product Struct:**
+  
+  ```rust
 
-- **Attributes:**
-  - `id`, `name`, `password`, `hospital_id`, `patient_ids`.
-- Represents information about a doctor involved in the blood donation drive.
+  #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
+  struct Product {
+      id: u64,
+      name: String,
+      quantity: u32,
+      category: String,
+      warehouse: Warehouse,
+      added_at: u64,
+      re_stocked_at: u64,
+  }
+  ```
 
-### PatientHistoryUpdate
+- **Warehouse Struct:**
+  
+  ```rust
+  #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
+  struct Warehouse {
+      id: u64,
+      name: String,
+      address: String,
+  }
+  ```
 
-- **Attributes:**
-  - `doctor_id`, `patient_id`, `doctor_password`, `new_history`.
-- Represents a payload structure for updating a patient's medical history.
+### 2. Implementation of Storable and BoundedStorable Traits
 
-### EditDoctor
+- Both `Product` and `Warehouse` implement the `Storable` trait, which defines methods for converting instances to and from bytes.
 
-- **Attributes:**
-  - `name`, `doctor_id`, `hospital_id`, `doctor_password`, `hospital_password`.
-- Represents a payload structure for editing doctor attributes.
+- Both also implement the `BoundedStorable` trait, specifying a maximum size for serialization.
 
-### DoctorPayload
+### 3. Thread-Local Storage
 
-- **Attributes:**
-  - `name`, `hospital_id`, `password`, `hospital_password`.
-- Represents a payload structure for adding a new doctor.
+- Thread-local static variables are used for memory management and storage:
+  
+  ```rust
+  static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> = /* ... */;
+  static ID_COUNTER: RefCell<IdCell> = /* ... */;
+  static PRODUCT_STORAGE: RefCell<StableBTreeMap<u64, Product, Memory>> = /* ... */;
+  static WAREHOUSE_STORAGE: RefCell<StableBTreeMap<u64, Warehouse, Memory>> = /* ... */;
+  ```
 
-## 2. Additional Storage
+### 4. Payload Structs
 
-- Introduces a new `DOCTOR_STORAGE` using `StableBTreeMap` to store doctor-related information.
+- Payload structs are defined for input data in update functions:
+  
+  ```rust
+  struct WarehousePayload { /* ... */ }
+  struct ProductPayload { /* ... */ }
+  struct EditProductPayload { /* ... */ }
+  struct GetProductPayload { /* ... */ }
+  struct EditWarehousePayload { /* ... */ }
+  struct AccessPayload { /* ... */ }
+  ```
 
-## 3. Update Functions
+### 5. Update Functions
 
-### assign_patient_to_doctor
+- Update functions modify the state. For example:
 
-- Assigns a patient to a doctor and adds the patient to the doctor's hospital.
+  ```rust
+  #[ic_cdk::update]
+  fn add_product(payload: ProductPayload) -> Result<Product, Error> { /* ... */ }
+  ```
 
-### update_patient_history
+### 6. Query Functions
 
-- Updates a patient's medical history by a doctor.
+- Query functions retrieve data but don't modify the state:
 
-### add_doctor
+  ```rust
+  #[ic_cdk::query]
+  fn get_product_by_id(id: u64) -> Result<Product, Error> { /* ... */ }
+  ```
 
-- Adds a new doctor to the system.
+### 7. Error Handling
 
-### add_doctor_to_hospital
+- An `Error` enum is defined for different error scenarios:
 
-- Helper function to add a doctor to a hospital.
+  ```rust
+  enum Error { /* ... */ }
+  ```
 
-### edit_doctor
+### 8. Candid Export
 
-- Edits doctor attributes and assigns the doctor to a hospital.
-
-## 4. Query Functions
-
-### get_doctor_by_id
-
-- Retrieves a doctor by ID.
-
-### get_patient_info
-
-- Retrieves patient information by patient ID and doctor password.
-
-## 5. Helper Functions
-
-### add_doctor_to_storage
-
-- Helper function to add a doctor to storage.
-
-### add_patient_to_hospital
-
-- Helper function to add a patient to a hospital.
-
-## 6. Error Handling
-
-- Extends the `Error` enum with new variants (`AlreadyInit`, `Unauthorized`).
-
-## 7. Candid Interface
-
-- Exports the Candid interface for seamless interaction with the Internet Computer.
+- The Candid interface is exported using `ic_cdk::export_candid!()`.
 
 ## ICP
 
