@@ -1,0 +1,28 @@
+{
+  "canisters": {
+    "inventory_system_backend": {
+      "candid": "src/inventory_system_backend/inventory_system_backend.did",
+      "package": "inventory_system_backend",
+      "type": "rust"
+    },
+    "inventory_system_frontend": {
+      "dependencies": ["inventory_system_backend"],
+      "frontend": {
+        "entrypoint": "src/inventory_system_frontend/src/index.html"
+      },
+      "source": [
+        "src/inventory_system_frontend/assets",
+        "dist/inventory_system_frontend/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
