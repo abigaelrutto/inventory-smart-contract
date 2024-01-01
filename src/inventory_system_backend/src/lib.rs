@@ -109,7 +109,6 @@ struct ProductPayload {
 #[derive(candid::CandidType, Clone, Serialize, Deserialize, Default)]
 struct EditProductPayload {
     name: String,
-    password: String,
     product_id: u64,
 }
 

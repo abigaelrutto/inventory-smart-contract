@@ -1,0 +1,52 @@
+type EditProductPayload = record {
+  product_id : nat64;
+  password : text;
+  name : text;
+};
+type EditWarehousePayload = record { name : text; warehouse_id : nat64 };
+type Error = variant {
+  InvalidPayload : record { msg : text };
+  NotFound : record { msg : text };
+  Unauthorized : record { msg : text };
+  AlreadyInit : record { msg : text };
+};
+type GetProductPayload = record { product_id : nat64; amount : nat32 };
+type Product = record {
+  id : nat64;
+  name : text;
+  added_at : nat64;
+  quantity : nat32;
+  category : text;
+  warehouse : Warehouse;
+  re_stocked_at : nat64;
+};
+type ProductPayload = record {
+  name : text;
+  quantity : nat32;
+  category : text;
+  warehouse_id : nat64;
+};
+type Result = variant { Ok : Product; Err : Error };
+type Result_1 = variant { Ok : Warehouse; Err : Error };
+type Result_2 = variant { Ok : vec Product; Err : Error };
+type Result_3 = variant { Ok : vec Warehouse; Err : Error };
+type Warehouse = record { id : nat64; name : text; address : text };
+type WarehousePayload = record {
+  city : text;
+  password : text;
+  name : text;
+  address : text;
+};
+service : {
+  add_product : (ProductPayload) -> (Result);
+  add_product_to_warehouse : (GetProductPayload) -> (Result);
+  add_warehouse : (WarehousePayload) -> (Result_1);
+  edit_product : (EditProductPayload) -> (Result);
+  edit_warehouse : (EditWarehousePayload) -> (Result_1);
+  get_all_products : () -> (Result_2) query;
+  get_all_warehouses : () -> (Result_3) query;
+  get_product_by_id : (nat64) -> (Result) query;
+  get_warehouse_by_id : (nat64) -> (Result_1) query;
+  get_warehouse_by_name : (text) -> (Result_3) query;
+  remove_product_from_warehouse : (GetProductPayload) -> (Result);
+}
